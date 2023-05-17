@@ -582,9 +582,10 @@ class KeckLRISSpectrograph(spectrograph.Spectrograph):
         for islit in range(self.slitmask.nslits):
             sep = mask_coord.separation(slit_coords[islit])
             PA = mask_coord.position_angle(slit_coords[islit])
-            #
+            # Spatial offset on detector
             alpha = sep.to('arcsec') * np.cos(PA-self.slitmask.posx_pa*units.deg)
             #delta = sep.to('arcsec') * np.sin(PA-self.slitmask.posx_pa*units.deg)
+            # Convert to pixels
             dx_pix = (alpha.value-self.slitmask.onsky[islit,2]/2.) / (platescale*bin_spat)
             # target is the slit number
             left_edges.append(np.round(dx_pix))
@@ -598,8 +599,8 @@ class KeckLRISSpectrograph(spectrograph.Spectrograph):
         centers = (left_edges + right_edges)/2.
 
         # Trim down by detector
-        # TODO -- Deal with Mark4
         max_spat = 2048//bin_spat
+        # xstart is something like the x pixel of the mask center (binned)
         if ccdnum == 1:
             if self.name == 'keck_lris_red':
                 good = centers < 0.
@@ -607,6 +608,9 @@ class KeckLRISSpectrograph(spectrograph.Spectrograph):
             elif self.name == 'keck_lris_blue':
                 good = centers < 0.
                 xstart = max_spat + 30//bin_spat  
+            elif self.name == 'keck_lris_red_mark4':
+                good = centers < 0.
+                xstart = max_spat + 160//bin_spat  # The 160 is for the chip gap
             else:
                 msgs.error(f'Not ready to use slitmasks for {self.name}.  Develop it!')
         else:
@@ -617,6 +621,10 @@ class KeckLRISSpectrograph(spectrograph.Spectrograph):
                 msgs.error(f'Not ready to use slitmasks for {self.name}.  Develop it!')
         left_edges += xstart
         right_edges += xstart
+
+        # CHECK HERE IF WE ARE DUBBGING
+        embed(header='624 of keck_lris: get_maskdef_slitedges')
+        
         left_edges[~good] = -1
 
         # Toss any left edges off the right-side of the detector
