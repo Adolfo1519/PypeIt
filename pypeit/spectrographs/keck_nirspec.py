@@ -40,6 +40,52 @@ class KeckNIRSPECSpectrograph(spectrograph.Spectrograph):
         # pypeit.metadata.PypeItMetaData.set_pypeit_cols
         pypeit_keys += ['comb_id', 'bkg_id', 'shift']
         return pypeit_keys
+    
+    def bpm(self, filename, det, shape=None, msbias=None):
+        """
+        Generate a default bad-pixel mask.
+
+        Even though they are both optional, either the precise shape for
+        the image (``shape``) or an example file that can be read to get
+        the shape (``filename`` using :func:`get_image_shape`) *must* be
+        provided.
+
+        Args:
+            filename (:obj:`str` or None):
+                An example file to use to get the image shape.
+            det (:obj:`int`):
+                1-indexed detector number to use when getting the image
+                shape from the example file.
+            shape (tuple, optional):
+                Processed image shape
+                Required if filename is None
+                Ignored if filename is not None
+            msbias (`numpy.ndarray`_, optional):
+                Processed bias frame used to identify bad pixels
+
+        Returns:
+            `numpy.ndarray`_: An integer array with a masked value set
+            to 1 and an unmasked value set to 0.  All values are set to
+            0.
+        """
+        # Call the base-class method to generate the empty bpm
+        bpm_img = super().bpm(filename, det, shape=shape, msbias=msbias)
+
+        # Edges of the detector are junk
+        msgs.info("Custom bad pixel mask for NIRSPEC")
+        bpm_img[:, :20] = 1.
+        bpm_img[:, 2000:] = 1.
+
+        bpm_img[:20, :] = 1.
+        bpm_img[2000:, :] = 1.
+
+        for ii in range(31):
+            bpm_img[ii*64 + 1, :] = 1.
+
+
+
+        return bpm_img
+
 
 
 class KeckNIRSPECSpectrographOld(spectrograph.Spectrograph):
@@ -299,7 +345,10 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
         self.lamps_list = par['calibrations']['wavelengths']['lamps']
         
         # wavelength calibration
-        supported_filters = ['NIRSPEC-1', 'NIRSPEC-3', 'NIRSPEC-5', 'NIRSPEC-7', 'Kband-new', 'KL']
+        supported_filters = ['NIRSPEC-1', 'Yband-new', 
+                             'Jband-new', 'NIRSPEC-3', 
+                             'Hband-new', 'NIRSPEC-5', 
+                             'NIRSPEC-7', 'Kband-new', 'KL']
         if (self.filter1 not in supported_filters) and (self.filter2 not in supported_filters):
             msgs.warn(f'Filter {self.filter1} or {self.filter2} may not be supported!!')
         
@@ -327,7 +376,7 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
 
             par['calibrations']['slitedges']['overlap'] = False
 
-        if self.filter2 == 'NIRSPEC-5':
+        if self.filter2 == 'NIRSPEC-5' or self.filter2 == 'Hband-new':
             par['calibrations']['wavelengths']['n_final'] = 3
             par['calibrations']['wavelengths']['ech_nspec_coeff'] = 3
             par['calibrations']['wavelengths']['cc_thresh'] = 0.5
@@ -339,7 +388,7 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
             if self.get_meta_value(headarr, 'xdangle') == 36.72:
                 par['calibrations']['slitedges']['rm_slits'] = '1:1100:1925'
 
-        if self.filter2 == 'NIRSPEC-3':
+        if self.filter2 == 'NIRSPEC-3' or self.filter2 == 'Jband-new':
             par['calibrations']['wavelengths']['n_final'] = 3
             par['calibrations']['wavelengths']['ech_nspec_coeff'] = 3
             par['calibrations']['wavelengths']['cc_thresh'] = 0.5
@@ -349,7 +398,7 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
             par['calibrations']['wavelengths']['echelle_pad'] = 0
             par['calibrations']['wavelengths']['stretch_func'] = 'quadratic'
 
-        if self.filter2 == 'NIRSPEC-1':
+        if self.filter2 == 'NIRSPEC-1' or self.filter2 == 'Yband-new':
             par['calibrations']['wavelengths']['n_final'] = 3
             par['calibrations']['wavelengths']['ech_nspec_coeff'] = 3
             par['calibrations']['wavelengths']['cc_thresh'] = 0.5
@@ -426,13 +475,13 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
         #msgs.info(lamps_list, 'Xe' in lamps_list[0])
         #msgs.info('filter1 = ', filter1)
         if 'Xe' in lamps_list[0]:
-            if band == 'NIRSPEC-1':
+            if band == 'NIRSPEC-1' or band == 'Yband-new':
                 angle_fits_file = 'keck_nirspec_y_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_y_composite_arc.fits'
-            if band == 'NIRSPEC-3':
+            if band == 'NIRSPEC-3' or band == 'Jband-new':
                 angle_fits_file = 'keck_nirspec_j_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_j_composite_arc.fits'
-            if band == 'NIRSPEC-5':
+            if band == 'NIRSPEC-5' or band == 'Hband-new':
                 angle_fits_file = 'keck_nirspec_h_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_h_composite_arc.fits'
             if band == 'Kband-new':
@@ -446,13 +495,13 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
                 composite_arc_file = 'keck_nirspec_l_composite_arc.fits'
         elif 'OH' in lamps_list[0]:
             msgs.info('Using OH Lines')
-            if band == 'NIRSPEC-1':
+            if band == 'NIRSPEC-1' or band == 'Yband-new':
                 angle_fits_file = 'keck_nirspec_y_OH_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_y_composite_OH.fits'
-            if band == 'NIRSPEC-3':
+            if band == 'NIRSPEC-3' or band == 'Jband-new':
                 angle_fits_file = 'keck_nirspec_j_OH_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_j_composite_OH.fits'
-            if band == 'NIRSPEC-5':
+            if band == 'NIRSPEC-5' or band == 'Hband-new':
                 angle_fits_file = 'keck_nirspec_h_OH_angle_fits.fits'
                 composite_arc_file = 'keck_nirspec_h_composite_OH.fits'
 
@@ -1164,13 +1213,13 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             det=1,
             binning         ='1,1',  # No binning allowed
             dataext         = 0,
-            specaxis        = 0,
-            specflip        = False,
+            specaxis        = 1,
+            specflip        = True,
             spatflip        = False,
             platescale      = 0.098,
             darkcurr        = 2520.0,  # e-/pixel/hour  (=0.7 e-/pixel/s)
             saturation      = 100000.,
-            nonlinear       = 0.9,  # docs say linear to 90,000 but our flats are usually higher
+            nonlinear       = 0.25,  # docs say linear to 25,000 
             numamplifiers   = 1,
             mincounts       = -1e10,
             gain            = np.atleast_1d(3.01),
@@ -1202,8 +1251,10 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         par['calibrations']['wavelengths']['method'] = 'holy-grail'
         # Reidentification parameters
         #par['calibrations']['wavelengths']['reid_arxiv'] = 'keck_nires.fits'
-        par['calibrations']['slitedges']['edge_thresh'] = 200.
+        par['calibrations']['slitedges']['edge_thresh'] = 50.
+        par['calibrations']['slitedges']['fit_min_spec_length'] = 0.4
         par['calibrations']['slitedges']['sync_predict'] = 'nearest'
+        par['calibrations']['slitedges']['exclude_regions'] = ['1:1500:2048']
 
         # Flats
         par['calibrations']['flatfield']['tweak_slits_thresh'] = 0.80
@@ -1260,6 +1311,8 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
 
         return par
 
+
+
     def init_meta(self):
         """
         Define how metadata are derived from the spectrograph files.
@@ -1275,16 +1328,19 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         self.meta['decker'] = dict(ext=0, card='SLITNAME')
         self.meta['binning'] = dict(ext=0, card=None, default='1,1')
 
-        self.meta['mjd'] = dict(ext=0, card='MJD-OBS')
-        self.meta['exptime'] = dict(ext=0, card='ELAPTIME')
+        self.meta['mjd'] = dict(ext=0, card='MJD')
+        self.meta['exptime'] = dict(ext=0, card='TRUITIME')
         self.meta['airmass'] = dict(ext=0, card='AIRMASS')
         # Extras for config and frametyping
-        self.meta['dispname'] = dict(ext=0, card='DISPERS')
+        self.meta['dispname'] = dict(ext=0, card='OBSMODE')
         self.meta['hatch'] = dict(ext=0, card='CALMPOS')
-        self.meta['idname'] = dict(ext=0, card='IMAGETYP')
+        self.meta['frameno'] = dict(ext=0, card='FRAMENUM')
+        self.meta['idname'] = dict(ext=0, card='IMTYPE')
         self.meta['instrument'] = dict(ext=0, card='INSTRUME')
+        self.meta['filter1'] = dict(ext=0, card='SCIFILT1')
+        self.meta['filter2'] = dict(ext=0, card='SCIFILT2')
         # Lamps
-        lamp_names = ['NEON', 'ARGON', 'KRYPTON', 'XENON', 'ETALON', 'FLAT']
+        lamp_names = ['NEON', 'ARGON', 'KRYPTON', 'XENON', 'ETALON', 'HALOGEN']
         for kk,lamp_name in enumerate(lamp_names):
             self.meta['lampstat{:02d}'.format(kk+1)] = dict(ext=0, card=lamp_name)
 
@@ -1302,7 +1358,7 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             and used to constuct the :class:`~pypeit.metadata.PypeItMetaData`
             object.
         """
-        return ['decker', 'dispname']
+        return ['decker', 'dispname', 'filter1', 'filter2']
 
     def raw_header_cards(self):
         """
@@ -1322,7 +1378,7 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             :obj:`list`: List of keywords from the raw data files that should
             be propagated in output files.
         """
-        return ['SLITNAME', 'DISPERS']
+        return ['SLITNAME', 'DISPERS', 'SCIFILT1', 'SCIFILT2', 'SLITNAME']
 
     def check_frame_type(self, ftype, fitstbl, exprng=None):
         """
@@ -1344,7 +1400,7 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             exposures in ``fitstbl`` that are ``ftype`` type frames.
         """
         good_exp = framematch.check_frame_exptime(fitstbl['exptime'], exprng)
-        hatch = fitstbl['hatch'].data.astype(int)
+        hatch = np.equal(fitstbl['hatch'].data, 'In').astype(int)
         if ftype in ['science', 'standard']:
             return good_exp & self.lamps(fitstbl, 'off') & (hatch == 0) \
                         & (fitstbl['idname'] == 'object')
@@ -1393,17 +1449,17 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             lamp_stat = [k for k in fitstbl.keys() if 'lampstat' in k]
             retarr = np.zeros((len(lamp_stat), len(fitstbl)), dtype=bool)
             for kk, key in enumerate(lamp_stat):
-                retarr[kk,:] = fitstbl[key].data.astype(int) == 0
+                retarr[kk,:] = fitstbl[key].data == 'Off'
             return np.all(retarr, axis=0)
         if status == 'arcs':
             # Check if any arc lamps are on
             lamp_stat = [ 'lampstat{0:02d}'.format(i) for i in range(1,6) ]
             retarr = np.zeros((len(lamp_stat), len(fitstbl)))
             for kk, key in enumerate(lamp_stat):
-                retarr[kk,:] = fitstbl[key].data.astype(int) == 1
+                retarr[kk,:] = fitstbl[key].data == 'On'
             return np.any(retarr, axis=0)
         if status == 'dome':
-            return fitstbl['lampstat06'].data.astype(int) == 1
+            return fitstbl['lampstat06'].data == 'On'
 
         raise ValueError('No implementation for status = {0}'.format(status))
 
@@ -1440,7 +1496,15 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         # Edges of the detector are junk
         msgs.info("Custom bad pixel mask for NIRSPEC")
         bpm_img[:, :20] = 1.
-        bpm_img[:, 1000:] = 1.
+        bpm_img[:, 2000:] = 1.
+
+        bpm_img[:20, :] = 1.
+        bpm_img[2000:, :] = 1.
+
+        for ii in range(31):
+            bpm_img[ii*64 + 1, :] = 1.
+
+
 
         return bpm_img
 

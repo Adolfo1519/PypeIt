@@ -2097,7 +2097,7 @@ class EdgeTraceSet(calibframe.CalibFrame):
         # Find spectrally short traces
         short = np.zeros_like(indx, dtype=bool)
         if minimum_spec_length is not None:
-            msgs.info('Minimum spectral length of any trace (pixels): {0:.2f}'.format(
+            msgs.info('Minimum allowed spectral length of any trace (pixels): {0:.2f}'.format(
                       minimum_spec_length))
             short[indx] = np.sum(np.logical_not(_bpm[:,indx]), axis=0) < minimum_spec_length
             if np.any(short):
