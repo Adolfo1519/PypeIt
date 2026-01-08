@@ -1242,7 +1242,7 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             platescale      = 0.098,
             darkcurr        = 2520.0,  # e-/pixel/hour  (=0.7 e-/pixel/s)
             saturation      = 100000.,
-            nonlinear       = 0.25,  # docs say linear to 25,000 
+            nonlinear       = 0.9,  # docs say linear to 25,000 
             numamplifiers   = 1,
             mincounts       = -1e10,
             gain            = np.atleast_1d(3.01),
