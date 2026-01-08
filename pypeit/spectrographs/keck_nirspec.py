@@ -26,6 +26,26 @@ class KeckNIRSPECSpectrograph(spectrograph.Spectrograph):
     url = 'https://www2.keck.hawaii.edu/inst/nirspec/'
     header_name = 'NIRSPEC'
 
+    def order_platescale(self, order_vec, binning=None):
+        """
+        Return the platescale for each echelle order.
+
+        Note that NIRSPEC has no binning.
+
+        Args:
+            order_vec (`numpy.ndarray`_):
+                The vector providing the order numbers.
+            binning (:obj:`str`, optional):
+                The string defining the spectral and spatial binning. **This
+                is always ignored.**
+
+        Returns:
+            `numpy.ndarray`_: An array with the platescale for each order
+            provided by ``order``.
+        """
+        pscale = self.get_detector_par(1).platescale
+        return np.full(order_vec.size, pscale)
+
     def pypeit_file_keys(self):
         """
         Define the list of keys to be output into a standard PypeIt file.
@@ -114,6 +134,26 @@ class KeckNIRSPECSpectrographOld(spectrograph.Spectrograph):
         pypeit_keys += ['comb_id', 'bkg_id', 'shift']
         return pypeit_keys
 
+    def order_platescale(self, order_vec, binning=None):
+        """
+        Return the platescale for each echelle order.
+
+        Note that NIRSPEC has no binning.
+
+        Args:
+            order_vec (`numpy.ndarray`_):
+                The vector providing the order numbers.
+            binning (:obj:`str`, optional):
+                The string defining the spectral and spatial binning. **This
+                is always ignored.**
+
+        Returns:
+            `numpy.ndarray`_: An array with the platescale for each order
+            provided by ``order``.
+        """
+        pscale = self.get_detector_par(1).platescale
+        return np.full(order_vec.size, pscale)
+
 
 class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
     """
@@ -168,25 +208,7 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
 
         return detector_container.DetectorContainer(**detector_dict)
 
-    def order_platescale(self, order_vec, binning=None):
-        """
-        Return the platescale for each echelle order.
 
-        Note that NIRSPEC has no binning.
-
-        Args:
-            order_vec (`numpy.ndarray`_):
-                The vector providing the order numbers.
-            binning (:obj:`str`, optional):
-                The string defining the spectral and spatial binning. **This
-                is always ignored.**
-
-        Returns:
-            `numpy.ndarray`_: An array with the platescale for each order
-            provided by ``order``.
-        """
-        pscale = self.get_detector_par(1).platescale
-        return np.full(order_vec.size, pscale)
 
     @classmethod
     def configuration_keys(self):
@@ -545,7 +567,7 @@ class KeckNIRSPECHighSpectrograph(KeckNIRSPECSpectrograph):
             is_arc = self.lamps(fitstbl, 'arcs') & (hatch == 'In')
             good_exp[is_arc] = True 
             is_obj = self.lamps(fitstbl, 'off') & (hatch == 'Out') 
-            good_exp[is_obj] = fitstbl['exptime'].data[is_obj] > 60.0
+            good_exp[is_obj] = fitstbl['exptime'].data[is_obj] > 5.0
             return good_exp & (is_arc | is_obj)
         msgs.warn('Cannot determine if frames are of type {0}.'.format(ftype))
         return np.zeros(len(fitstbl), dtype=bool)
@@ -601,6 +623,7 @@ class KeckNIRSPECHighSpectrographOld(KeckNIRSPECSpectrographOld):
     ech_fixed_format = False
     lamps_list = []
     filter = ''
+
 
     def get_detector_par(self, det, hdu=None):
         """
@@ -1295,10 +1318,10 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         #par['scienceframe']['process']['bias'] = 'skip'
 
         # Set the default exposure time ranges for the frame typing
-        par['calibrations']['standardframe']['exprng'] = [None, 20]
-        par['calibrations']['arcframe']['exprng'] = [20, None]
-        par['calibrations']['darkframe']['exprng'] = [20, None]
-        par['scienceframe']['exprng'] = [20, None]
+        par['calibrations']['standardframe']['exprng'] = [None, 5]
+        par['calibrations']['arcframe']['exprng'] = [None, None]
+        par['calibrations']['darkframe']['exprng'] = [None, None]
+        par['scienceframe']['exprng'] = [5, None]
 
         # Sensitivity function parameters
         par['sensfunc']['algorithm'] = 'IR'
@@ -1340,9 +1363,10 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         self.meta['filter1'] = dict(ext=0, card='SCIFILT1')
         self.meta['filter2'] = dict(ext=0, card='SCIFILT2')
         # Lamps
-        lamp_names = ['NEON', 'ARGON', 'KRYPTON', 'XENON', 'ETALON', 'HALOGEN']
+        lamp_names = ['NEON', 'ARGON', 'KRYPTON', 'XENON', 'ETALON']
         for kk,lamp_name in enumerate(lamp_names):
             self.meta['lampstat{:02d}'.format(kk+1)] = dict(ext=0, card=lamp_name)
+        self.meta['lampstat06'] = dict(ext=0, card = 'HALOGEN')
 
     def configuration_keys(self):
         """
@@ -1400,16 +1424,16 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             exposures in ``fitstbl`` that are ``ftype`` type frames.
         """
         good_exp = framematch.check_frame_exptime(fitstbl['exptime'], exprng)
-        hatch = np.equal(fitstbl['hatch'].data, 'In').astype(int)
+        hatch = np.copy(fitstbl['hatch'].data)#.data.astype(int)
         if ftype in ['science', 'standard']:
-            return good_exp & self.lamps(fitstbl, 'off') & (hatch == 0) \
+            return good_exp & self.lamps(fitstbl, 'off') & (hatch == 'Out') \
                         & (fitstbl['idname'] == 'object')
         if ftype in ['bias', 'dark']:
-            return good_exp & self.lamps(fitstbl, 'off') & (hatch == 0) \
+            return good_exp & self.lamps(fitstbl, 'off') & (hatch == 'In') \
                         & (fitstbl['idname'] == 'dark')
         if ftype in ['pixelflat', 'trace']:
             # Flats and trace frames are typed together
-            return good_exp & self.lamps(fitstbl, 'dome') & (hatch == 1) \
+            return good_exp & self.lamps(fitstbl, 'dome') \
                         & (fitstbl['idname'] == 'flatlamp')
         if ftype == 'pinhole':
             # Don't type pinhole frames
@@ -1417,9 +1441,9 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
         if ftype in ['arc', 'tilt']:
             # TODO: This is a kludge.  Allow science frames to also be
             # classified as arcs
-            is_arc = self.lamps(fitstbl, 'arcs') & (hatch == 1) \
+            is_arc = self.lamps(fitstbl, 'arcs') & (hatch == 'In') \
                             & (fitstbl['idname'] == 'arclamp')
-            is_obj = self.lamps(fitstbl, 'off') & (hatch == 0) \
+            is_obj = self.lamps(fitstbl, 'off') & (hatch == 'Out') \
                         & (fitstbl['idname'] == 'object')
             return good_exp & (is_arc | is_obj)
         msgs.warn('Cannot determine if frames are of type {0}.'.format(ftype))
@@ -1507,6 +1531,8 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
 
 
         return bpm_img
+
+
 
 
 # NOTE: Including this unfinished class causes the docs to fault because the
