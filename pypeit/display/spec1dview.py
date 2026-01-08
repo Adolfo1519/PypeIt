@@ -76,11 +76,10 @@ from ginga.gw import Widgets
 from ginga.table.AstroTable import AstroTable
 from ginga.plot.Plotable import Plotable
 from ginga.canvas.CanvasObject import get_canvas_types
+from ginga.util.syncops import Shelf
 
 from pypeit import specobjs
 from pypeit import utils
-# TODO: need to make PypeIt LineList class to deprecate linetools
-from linetools.lists.linelist import LineList
 
 __all__ = ['Spec1dView']
 
@@ -110,8 +109,7 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         # selected line list
         self.line_list = 'None'
         # allowed line lists
-        self.line_lists = ['None', 'ISM', 'Strong', 'HI', 'H2', 'CO',
-                           'EUV', 'Galaxy', 'AGN']
+        self.line_lists = ['None'] + utils.get_line_list_names()
         self.llist = None   # the actual line list object
         self.ext_name = ''
 
@@ -131,6 +129,11 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         # dictionary of plotable types
         self.dc = get_canvas_types()
         self.plot = None
+        self.plot_shelf = Shelf()
+        self.plot_stocker = self.plot_shelf.get_stocker()
+
+        viewer = self.channel.get_viewer('Ginga Plot')
+        viewer.add_callback('range-set', self.range_changed_cb)
         self.gui_up = False
 
     def build_gui(self, container):
@@ -255,7 +258,7 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         if self.line_list == 'None':
             self.llist = None
         else:
-            self.llist = LineList(self.line_list)
+            self.llist = utils.get_line_list(self.line_list)
         self.logger.info(f"Loaded line list: '{self.line_list}'")
 
         self.fv.gui_do(self.plot_lines)
@@ -293,6 +296,8 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         Lines are made into a single compound object so that it is easier
         to remove them as a group if the line list is changed.
         """
+        if self.plot is None:
+            return
         canvas = self.plot.get_canvas()
         canvas.delete_object_by_tag('lines', redraw=False)
 
@@ -303,14 +308,27 @@ class Spec1dView(GingaPlugin.LocalPlugin):
             y_min, y_max = self.data.y_min, self.data.y_max
 
             z = self.z
-            wvobs = np.array((1 + z) * self.llist.wrest)
+            wvobs = np.array((1 + z) * self.llist['wrest'])
             ylbl_pos = y_max - 0.2 * (y_max - y_min)
             gdwv = np.where((wvobs > x_min) & (wvobs < x_max))[0]
 
+            viewer = self.channel.get_viewer('Ginga Plot')
+            ranges = viewer.get_ranges()
+            x_lo, x_hi = ranges[0]
+            y_lo, y_hi = ranges[1]
+            # make label always sit about 3/4 up the Y range
+            y_lbl = y_lo + (y_hi - y_lo) * 0.75
+            # line should reach to the label at least
+            y_max = max(y_lbl, y_max)
+
             for kk in range(len(gdwv)):
                 jj = gdwv[kk]
-                wrest = self.llist.wrest[jj].value
-                lbl = self.llist.name[jj]
+                wrest = self.llist['wrest'][jj]
+                x_lbl = wrest * (z + 1)
+                if not (x_lo < x_lbl < x_hi):
+                    # skip plotting lines that are not visible
+                    continue
+
                 # Plot
                 x_data = wrest * np.array([z + 1, z + 1])
                 y_data = (y_min, y_max)
@@ -321,8 +339,9 @@ class Spec1dView(GingaPlugin.LocalPlugin):
                                        linestyle='solid',
                                        color='blue'), redraw=False)
                 # Label
-                x, y = wrest * (z + 1), ylbl_pos
-                lines.add(self.dc.Text(x, y, text=lbl, rot_deg=90,
+                lbl = self.llist['name'][jj]
+                lines.add(self.dc.Text(x_lbl, y_lbl, text=lbl, rot_deg=90,
+                                       bgcolor='white', bgalpha=1.0,
                                        color='blue', fontsize=10),
                           redraw=False)
 
@@ -330,7 +349,8 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         canvas.add(lines, tag='lines', redraw=False)
 
         # this causes the plot viewer to redraw itself
-        self.plot.make_callback('modified')
+        with self.plot_stocker:
+            self.plot.make_callback('modified')
 
     def replot(self):
         """Replot the plot and line list.
@@ -360,6 +380,9 @@ class Spec1dView(GingaPlugin.LocalPlugin):
 
         self.plot_lines()
 
+    def range_changed_cb(self, viewer, ranges):
+        if not self.plot_shelf.is_blocked():
+            self.plot_lines()
 
     def process_file(self, filepath):
         """Process `filepath` creating `SpecObjs` (a series of extensions),
@@ -383,7 +406,6 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         self.plot = Plotable(logger=self.logger)
         self.plot.set(name="plot-{}".format(str(time.time())),
                       path=None, nothumb=True)
-
         self.recalc()
 
         # add the plot to this channel
@@ -462,6 +484,8 @@ class Spec1dView(GingaPlugin.LocalPlugin):
         Clean up instance variables so we don't hang on to any large data
         structures.
         """
+        viewer = self.channel.get_viewer('Ginga Plot')
+        viewer.clear()
         self.sobjs = 0
         self.exten = 0
         self.ext_name = ''
