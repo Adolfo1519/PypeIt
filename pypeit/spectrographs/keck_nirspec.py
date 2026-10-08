@@ -1237,7 +1237,7 @@ class KeckNIRSPECLowSpectrograph(KeckNIRSPECSpectrograph):
             binning         ='1,1',  # No binning allowed
             dataext         = 0,
             specaxis        = 1,
-            specflip        = True,
+            specflip        = False,
             spatflip        = False,
             platescale      = 0.098,
             darkcurr        = 2520.0,  # e-/pixel/hour  (=0.7 e-/pixel/s)
